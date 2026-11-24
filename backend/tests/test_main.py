@@ -20,6 +20,17 @@ TEST_SESSION = {
     "last_activity_at": "2026-01-01T10:00:00",
 }
 
+TEST_DOCUMENT_ID = 7
+
+# Simulate a document belonging to the authenticated session.
+TEST_DOCUMENT = {
+    "id": TEST_DOCUMENT_ID,
+    "filename": "case 01.PDF",
+    "file_type": "PDF",
+    "status": "processed",
+    "content_hash": "a" * 64,
+}
+
 
 @pytest.fixture(autouse=True)
 def authenticate_test_session():
@@ -55,12 +66,18 @@ def test_health_endpoint():
     assert response.json() == {"status": "healthy"}
 
 
-def test_valid_question():
-    """A valid question should be accepted for the active session."""
+@patch("backend.routers.questions.get_document_by_id")
+def test_valid_question(mock_get_document):
+    """A valid question should be accepted for the active document."""
+
+    mock_get_document.return_value = TEST_DOCUMENT
 
     response = client.post(
         "/questions/preview",
-        json={"question": "Summarize this document"},
+        json={
+            "question": "Summarize this document",
+            "document_id": TEST_DOCUMENT_ID,
+        },
     )
 
     assert response.status_code == 200
@@ -68,12 +85,25 @@ def test_valid_question():
         "Summarize this document"
     )
     assert response.json()["session_id"] == TEST_SESSION["id"]
+    assert response.json()["document_id"] == TEST_DOCUMENT_ID
+
+    mock_get_document.assert_called_once_with(
+        TEST_DOCUMENT_ID,
+        TEST_SESSION["id"],
+    )
 
 
 @patch("backend.routers.questions.save_conversation_turn")
 @patch("backend.routers.questions.answer_question")
-def test_ask_question(mock_answer_question, mock_save_conversation):
-    """Verify RAG generation and conversation persistence."""
+@patch("backend.routers.questions.get_document_by_id")
+def test_ask_question(
+    mock_get_document,
+    mock_answer_question,
+    mock_save_conversation,
+):
+    """Verify document-scoped RAG generation and conversation persistence."""
+
+    mock_get_document.return_value = TEST_DOCUMENT
 
     # Simulate the response returned by the RAG pipeline.
     rag_result = {
@@ -101,13 +131,14 @@ def test_ask_question(mock_answer_question, mock_save_conversation):
         "created_at": "2026-11-12T10:00:00",
     }
 
-    # Submit a question through the authenticated API endpoint.
     response = client.post(
         "/questions/ask",
-        json={"question": "What is the main argument?"},
+        json={
+            "question": "What is the main argument?",
+            "document_id": TEST_DOCUMENT_ID,
+        },
     )
 
-    # Verify the API returns the generated answer and saved record ID.
     assert response.status_code == 200
 
     response_data = response.json()
@@ -118,15 +149,23 @@ def test_ask_question(mock_answer_question, mock_save_conversation):
     assert response_data["conversation_id"] == 15
     assert response_data["created_at"] == "2026-11-12T10:00:00"
 
-    # Verify that RAG received the authenticated session ID.
+    # Verify that the document belongs to the authenticated session.
+    mock_get_document.assert_called_once_with(
+        TEST_DOCUMENT_ID,
+        TEST_SESSION["id"],
+    )
+
+    # Verify that RAG received both the session and document IDs.
     mock_answer_question.assert_called_once_with(
         "What is the main argument?",
         session_id=TEST_SESSION["id"],
+        document_id=TEST_DOCUMENT_ID,
     )
 
-    # Verify that the generated response was persisted.
+    # Verify that the generated response was saved under that document.
     mock_save_conversation.assert_called_once_with(
         session_id=TEST_SESSION["id"],
+        document_id=TEST_DOCUMENT_ID,
         question=rag_result["question"],
         answer=rag_result["answer"],
         sources=rag_result["sources"],
@@ -138,13 +177,16 @@ def test_ask_question(mock_answer_question, mock_save_conversation):
 
 @patch("backend.routers.questions.save_conversation_turn")
 @patch("backend.routers.questions.answer_question")
+@patch("backend.routers.questions.get_document_by_id")
 def test_ask_question_database_failure(
+    mock_get_document,
     mock_answer_question,
     mock_save_conversation,
 ):
     """Verify database failures return a safe API error."""
 
-    # Simulate successful answer generation.
+    mock_get_document.return_value = TEST_DOCUMENT
+
     mock_answer_question.return_value = {
         "question": "What is a fair trial?",
         "answer": "A fair trial protects individual rights.",
@@ -165,7 +207,10 @@ def test_ask_question_database_failure(
 
     response = client.post(
         "/questions/ask",
-        json={"question": "What is a fair trial?"},
+        json={
+            "question": "What is a fair trial?",
+            "document_id": TEST_DOCUMENT_ID,
+        },
     )
 
     assert response.status_code == 500
@@ -175,10 +220,15 @@ def test_ask_question_database_failure(
 
 
 @patch("backend.routers.questions.get_conversation_history")
-def test_get_question_history(mock_get_history):
-    """Verify history retrieval is restricted to the active session."""
+@patch("backend.routers.questions.get_document_by_id")
+def test_get_question_history(
+    mock_get_document,
+    mock_get_history,
+):
+    """Verify history retrieval is restricted to one document."""
 
-    # Simulate previously saved conversations.
+    mock_get_document.return_value = TEST_DOCUMENT
+
     expected_history = [
         {
             "id": 15,
@@ -194,44 +244,72 @@ def test_get_question_history(mock_get_history):
 
     mock_get_history.return_value = expected_history
 
-    response = client.get("/questions/history")
+    response = client.get(
+        "/questions/history",
+        params={"document_id": TEST_DOCUMENT_ID},
+    )
 
     assert response.status_code == 200
     assert response.json() == {
+        "document_id": TEST_DOCUMENT_ID,
         "history": expected_history,
         "count": 1,
     }
 
-    # Ensure history is fetched using the authenticated session ID.
-    mock_get_history.assert_called_once_with(TEST_SESSION["id"])
+    mock_get_document.assert_called_once_with(
+        TEST_DOCUMENT_ID,
+        TEST_SESSION["id"],
+    )
+
+    mock_get_history.assert_called_once_with(
+        session_id=TEST_SESSION["id"],
+        document_id=TEST_DOCUMENT_ID,
+    )
 
 
 @patch("backend.routers.questions.get_conversation_history")
-def test_get_question_history_empty(mock_get_history):
-    """An active session without conversations should return empty history."""
+@patch("backend.routers.questions.get_document_by_id")
+def test_get_question_history_empty(
+    mock_get_document,
+    mock_get_history,
+):
+    """An active document without conversations should return empty history."""
 
+    mock_get_document.return_value = TEST_DOCUMENT
     mock_get_history.return_value = []
 
-    response = client.get("/questions/history")
+    response = client.get(
+        "/questions/history",
+        params={"document_id": TEST_DOCUMENT_ID},
+    )
 
     assert response.status_code == 200
     assert response.json() == {
+        "document_id": TEST_DOCUMENT_ID,
         "history": [],
         "count": 0,
     }
 
-    mock_get_history.assert_called_once_with(TEST_SESSION["id"])
-
-
-@patch("backend.routers.questions.get_conversation_history")
-def test_get_question_history_database_failure(mock_get_history):
-    """Verify history database failures return a safe API error."""
-
-    mock_get_history.side_effect = Exception(
-        "Simulated database failure"
+    mock_get_history.assert_called_once_with(
+        session_id=TEST_SESSION["id"],
+        document_id=TEST_DOCUMENT_ID,
     )
 
-    response = client.get("/questions/history")
+
+@patch("backend.routers.questions.get_document_by_id")
+def test_get_question_history_database_failure(mock_get_document):
+    """Verify history database failures return a safe API error."""
+
+    mock_get_document.return_value = TEST_DOCUMENT
+
+    with patch(
+        "backend.routers.questions.get_conversation_history",
+        side_effect=Exception("Simulated database failure"),
+    ):
+        response = client.get(
+            "/questions/history",
+            params={"document_id": TEST_DOCUMENT_ID},
+        )
 
     assert response.status_code == 500
     assert response.json() == {
@@ -241,12 +319,34 @@ def test_get_question_history_database_failure(mock_get_history):
     }
 
 
+@patch("backend.routers.questions.get_document_by_id")
+def test_question_rejects_document_from_another_session(
+    mock_get_document,
+):
+    """A document outside the active session must not be accessible."""
+
+    mock_get_document.return_value = None
+
+    response = client.post(
+        "/questions/preview",
+        json={
+            "question": "Summarize this document",
+            "document_id": TEST_DOCUMENT_ID,
+        },
+    )
+
+    assert response.status_code == 404
+
+
 def test_short_question_is_rejected():
     """Questions shorter than three characters should be rejected."""
 
     response = client.post(
         "/questions/preview",
-        json={"question": "Hi"},
+        json={
+            "question": "Hi",
+            "document_id": TEST_DOCUMENT_ID,
+        },
     )
 
     assert response.status_code == 422
@@ -257,7 +357,26 @@ def test_missing_question_is_rejected():
 
     response = client.post(
         "/questions/preview",
-        json={},
+        json={"document_id": TEST_DOCUMENT_ID},
     )
+
+    assert response.status_code == 422
+
+
+def test_missing_document_id_is_rejected():
+    """A missing document ID should fail request validation."""
+
+    response = client.post(
+        "/questions/preview",
+        json={"question": "Summarize this document"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_missing_history_document_id_is_rejected():
+    """History requests must specify a document ID."""
+
+    response = client.get("/questions/history")
 
     assert response.status_code == 422

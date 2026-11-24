@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from backend.database import (
     get_conversation_history,
+    get_document_by_id,
     save_conversation_turn,
 )
 from backend.services.rag import answer_question
@@ -25,7 +26,12 @@ class QuestionRequest(BaseModel):
     question: str = Field(
         min_length=3,
         max_length=2000,
-        description="Question to ask about uploaded documents",
+        description="Question to ask about the selected document",
+    )
+
+    document_id: int = Field(
+        gt=0,
+        description="ID of the document being discussed",
     )
 
 
@@ -34,11 +40,24 @@ def preview_question(
     request: QuestionRequest,
     session: dict = Depends(get_authenticated_session),
 ):
-    """Preview a question after verifying the active session."""
+    """Preview a question after verifying document ownership."""
+
+    # Ensure the selected document belongs to the active session.
+    document = get_document_by_id(
+        request.document_id,
+        session["id"],
+    )
+
+    if document is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found in this session.",
+        )
 
     return {
         "received_question": request.question,
         "session_id": session["id"],
+        "document_id": request.document_id,
         "message": "Question received successfully",
     }
 
@@ -48,18 +67,32 @@ def ask_question(
     request: QuestionRequest,
     session: dict = Depends(get_authenticated_session),
 ):
-    """Generate an answer and persist the conversation."""
+    """Generate an answer and persist document-specific conversation."""
 
     try:
-        # Generate an answer using documents from the authenticated session.
+        # Verify document ownership before retrieval or LLM processing.
+        document = get_document_by_id(
+            request.document_id,
+            session["id"],
+        )
+
+        if document is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found in this session.",
+            )
+
+        # Generate an answer using only the selected document.
         result = answer_question(
             request.question,
             session_id=session["id"],
+            document_id=request.document_id,
         )
 
-        # Save the completed question, answer, and citation metadata.
+        # Save the conversation against its session and document.
         conversation = save_conversation_turn(
             session_id=session["id"],
+            document_id=request.document_id,
             question=result["question"],
             answer=result["answer"],
             sources=result["sources"],
@@ -68,11 +101,15 @@ def ask_question(
             result_count=result["result_count"],
         )
 
-        # Include the persistent conversation ID and timestamp in the response.
+        # Include the persistent conversation ID and timestamp.
         result["conversation_id"] = conversation["id"]
         result["created_at"] = conversation["created_at"]
 
         return result
+
+    except HTTPException:
+        # Preserve intentional HTTP errors such as document-not-found.
+        raise
 
     except Exception:
         # Log technical details without exposing them to the API client.
@@ -86,22 +123,40 @@ def ask_question(
 
 @router.get("/history")
 def get_question_history(
+    document_id: int,
     session: dict = Depends(get_authenticated_session),
 ):
-    """Retrieve conversation history belonging to the active session."""
+    """Retrieve conversation history for one document."""
 
     try:
-        # Fetch only conversations associated with the authenticated session.
-        history = get_conversation_history(session["id"])
+        # Verify that the document belongs to the authenticated session.
+        document = get_document_by_id(
+            document_id,
+            session["id"],
+        )
 
-        # Return the records and their total count.
+        if document is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found in this session.",
+            )
+
+        # Retrieve only conversations for this session and document.
+        history = get_conversation_history(
+            session_id=session["id"],
+            document_id=document_id,
+        )
+
         return {
+            "document_id": document_id,
             "history": history,
             "count": len(history),
         }
 
+    except HTTPException:
+        raise
+
     except Exception:
-        # Keep internal database errors out of the API response.
         logger.exception("Failed to retrieve conversation history")
 
         raise HTTPException(

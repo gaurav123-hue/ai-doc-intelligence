@@ -7,7 +7,9 @@ import pytest
 from backend.services.document_processing import process_document
 from backend.services.text_extraction import TextExtractionError
 
-
+@patch("backend.services.document_processing.save_chunk_embedding")
+@patch("backend.database.get_document_chunk_ids")
+@patch("backend.services.document_processing.generate_embeddings")
 @patch("backend.services.document_processing.update_document_status")
 @patch("backend.services.document_processing.save_document_chunks")
 @patch("backend.services.document_processing.chunk_text")
@@ -19,10 +21,19 @@ def test_process_document_saves_text_and_chunks_before_marking_processed(
     mock_chunk_text,
     mock_save_chunks,
     mock_update_status,
+    mock_generate_embeddings,
+    mock_get_chunk_ids,
+    mock_save_embedding,
 ):
     """Save the full text and its chunks before marking processing successful."""
     mock_extract.return_value = "Extracted document content"
     mock_chunk_text.return_value = ["Extracted document", "document content"]
+        # Mock embedding generation and the IDs returned by the database.
+    mock_generate_embeddings.return_value = [
+        [0.1] * 384,
+        [0.2] * 384,
+    ]
+    mock_get_chunk_ids.return_value = [101, 102]
 
     process_document(12, "storage/documents/example.txt")
 
@@ -36,7 +47,15 @@ def test_process_document_saves_text_and_chunks_before_marking_processed(
 
     # The processed status must be recorded only after all persistence succeeds.
     mock_update_status.assert_called_once_with(12, "processed")
+        # Verify that each generated embedding is saved against its chunk ID.
+    mock_generate_embeddings.assert_called_once_with(
+        ["Extracted document", "document content"]
+    )
+    mock_get_chunk_ids.assert_called_once_with(12)
 
+    mock_save_embedding.assert_any_call(101, [0.1] * 384)
+    mock_save_embedding.assert_any_call(102, [0.2] * 384)
+    assert mock_save_embedding.call_count == 2
 
 @patch("backend.services.document_processing.update_document_status")
 @patch("backend.services.document_processing.save_document_chunks")

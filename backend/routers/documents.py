@@ -14,6 +14,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from fastapi.responses import FileResponse
 from psycopg.errors import UniqueViolation
 from pydantic import BaseModel
 
@@ -21,6 +22,7 @@ from backend.database import (
     SessionDocumentLimitExceeded,
     create_uploaded_document,
     get_document_by_hash,
+    get_document_by_id,
     get_documents,
 )
 from backend.services.document_processing import process_document
@@ -70,6 +72,70 @@ def list_documents(
             detail="Failed to retrieve documents",
         ) from exc
 
+
+@router.get("/{document_id}/preview")
+def preview_document(
+    document_id: int,
+    session: dict = Depends(get_authenticated_session),
+):
+    """Serve a PDF only if it belongs to the authenticated session."""
+
+    try:
+        # Retrieve the document using both its ID and owning session ID.
+        document = get_document_by_id(
+            document_id,
+            session["id"],
+        )
+
+        if document is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found",
+            )
+
+        # This preview endpoint currently supports PDF files only.
+        if document["file_type"] != "PDF":
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail="Preview is currently available for PDF documents only",
+            )
+
+        # Reconstruct the storage path from trusted database values.
+        content_hash = document["content_hash"]
+        file_path = (
+            STORAGE_DIR
+            / str(session["id"])
+            / f"{content_hash}.pdf"
+        )
+
+        if not file_path.is_file():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="The stored document file could not be found",
+            )
+
+        # Return the PDF inline so the browser can render it.
+        return FileResponse(
+            path=file_path,
+            media_type="application/pdf",
+            filename=document["filename"],
+            content_disposition_type="inline",
+        )
+
+    except HTTPException:
+        raise
+
+    except Exception as exc:
+        logger.exception(
+            "Failed to preview document ID %s for session ID %s",
+            document_id,
+            session["id"],
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to preview document",
+        ) from exc
 
 @router.post(
     "/upload",

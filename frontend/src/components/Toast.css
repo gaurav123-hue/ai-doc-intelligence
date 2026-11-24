@@ -1,0 +1,137 @@
+
+/* Notification container */
+.toast {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 1000;
+
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  width: min(390px, calc(100vw - 32px));
+  padding: 16px;
+
+  background: #ffffff;
+  border: 1px solid #e5eaf2;
+  border-radius: 12px;
+
+  box-shadow: 0 10px 35px rgba(30, 45, 70, 0.12);
+
+  animation: toast-slide-in 0.25s ease-out;
+}
+
+/* Notification icon */
+.toast-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+
+  border-radius: 50%;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+/* Notification message */
+.toast-message {
+  flex: 1;
+  margin: 0;
+
+  color: #334155;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+/* Dismiss button */
+.toast-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+
+  color: #94a3b8;
+  font-size: 21px;
+  cursor: pointer;
+
+  transition: background 0.2s ease;
+}
+
+.toast-close:hover {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+/* Success notification */
+.toast-success {
+  border-left: 4px solid #16a34a;
+}
+
+.toast-success .toast-icon {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+/* Error notification */
+.toast-error {
+  border-left: 4px solid #dc2626;
+}
+
+.toast-error .toast-icon {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+/* Warning notification */
+.toast-warning {
+  border-left: 4px solid #d97706;
+}
+
+.toast-warning .toast-icon {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+/* Informational notification */
+.toast-info {
+  border-left: 4px solid #2563eb;
+}
+
+.toast-info .toast-icon {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+/* Entrance animation */
+@keyframes toast-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Mobile layout */
+@media (max-width: 480px) {
+  .toast {
+    top: 12px;
+    right: 12px;
+    width: calc(100vw - 24px);
+  }
+}

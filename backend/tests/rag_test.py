@@ -34,6 +34,33 @@ def test_valid_citation_formats(answer, retrieved_chunks):
     assert len(result["cited_sources"]) == 1
 
 
+def test_compact_citation_format(retrieved_chunks):
+    """Verify citations such as 【7,59】 are recognized."""
+
+    answer = "The judgment discusses fair trial rights. 【7,59】"
+
+    result = validate_citations(answer, retrieved_chunks)
+
+    assert result["is_valid"] is True
+    assert result["cited_sources"] == [
+        {"document_id": 7, "chunk_id": 59}
+    ]
+    assert result["invalid_sources"] == []
+
+
+def test_invalid_compact_citation_format(retrieved_chunks):
+    """Verify unknown compact citation references are rejected."""
+
+    answer = "The judgment discusses this issue. 【7,999】"
+
+    result = validate_citations(answer, retrieved_chunks)
+
+    assert result["is_valid"] is False
+    assert result["invalid_sources"] == [
+        {"document_id": 7, "chunk_id": 999}
+    ]
+
+
 def test_invalid_citation(retrieved_chunks):
     """Verify that citations to non-retrieved chunks are rejected."""
 
@@ -79,7 +106,7 @@ def test_mixed_valid_and_invalid_citations(retrieved_chunks):
 
 
 def test_answer_question_maps_only_cited_sources(monkeypatch):
-    """Verify citation mapping and session-scoped semantic retrieval."""
+    """Verify citation mapping and document-scoped semantic retrieval."""
 
     # Simulate chunks returned by semantic search.
     retrieved_chunks = [
@@ -104,13 +131,19 @@ def test_answer_question_maps_only_cited_sources(monkeypatch):
     # Record the arguments passed to semantic search.
     search_calls = []
 
-    def mock_search(embedding, session_id, limit=5):
-        """Return sample chunks and record the requested session."""
+    def mock_search(
+        embedding,
+        session_id,
+        document_id,
+        limit=10,
+    ):
+        """Return sample chunks and record the requested scope."""
 
         search_calls.append(
             {
                 "embedding": embedding,
                 "session_id": session_id,
+                "document_id": document_id,
                 "limit": limit,
             }
         )
@@ -135,18 +168,23 @@ def test_answer_question_maps_only_cited_sources(monkeypatch):
         ),
     )
 
-    # Execute the RAG pipeline for a specific session.
+    # Execute the RAG pipeline for a specific session and document.
     session_id = 999
+    document_id = 7
 
     result = answer_question(
         "What is a fair trial?",
         session_id=session_id,
+        document_id=document_id,
     )
 
-    # Verify that semantic search received the correct session ID.
+    # Verify semantic search received the correct identifiers.
     assert len(search_calls) == 1
     assert search_calls[0]["session_id"] == session_id
-    assert search_calls[0]["limit"] == 5
+    assert search_calls[0]["document_id"] == document_id
+
+    # Verify the updated default retrieves 10 candidate chunks.
+    assert search_calls[0]["limit"] == 10
 
     # Both chunks should remain in the retrieved sources.
     assert len(result["sources"]) == 2
@@ -164,3 +202,76 @@ def test_answer_question_maps_only_cited_sources(monkeypatch):
 
     # The citation should pass source-membership validation.
     assert result["citation_validation"]["is_valid"] is True
+
+
+def test_answer_question_rejects_invalid_document_id():
+    """Verify that invalid document IDs are rejected."""
+
+    with pytest.raises(ValueError, match="Document ID"):
+        answer_question(
+            "What is a fair trial?",
+            session_id=999,
+            document_id=0,
+        )
+
+
+@pytest.mark.parametrize("limit", [0, -1, 51, 100])
+def test_answer_question_rejects_invalid_retrieval_limit(limit):
+    """Verify retrieval limits stay within the supported range."""
+
+    with pytest.raises(ValueError, match="Retrieval limit"):
+        answer_question(
+            "What is a fair trial?",
+            session_id=999,
+            document_id=7,
+            limit=limit,
+        )
+
+
+
+def test_answer_question_returns_no_results_without_calling_llm(monkeypatch):
+    """Verify empty retrieval returns safely without invoking the LLM."""
+
+    # Mock embedding generation.
+    monkeypatch.setattr(
+        "backend.services.rag.generate_embedding",
+        lambda question: [0.01] * 384,
+    )
+
+    # Simulate a document with no matching chunks.
+    monkeypatch.setattr(
+        "backend.services.rag.search_similar_chunks",
+        lambda *args, **kwargs: [],
+    )
+
+    # Track whether the language model is called.
+    llm_calls = []
+
+    def mock_generate_response(prompt):
+        llm_calls.append(prompt)
+        return "Unexpected response"
+
+    monkeypatch.setattr(
+        "backend.services.rag.generate_response",
+        mock_generate_response,
+    )
+
+    result = answer_question(
+        "What does this document say?",
+        session_id=999,
+        document_id=7,
+    )
+
+    # Verify the response clearly reports missing evidence.
+    assert result["result_count"] == 0
+    assert result["sources"] == []
+    assert result["cited_source_details"] == []
+    assert "could not find relevant information" in (
+        result["answer"].lower()
+    )
+
+    # The LLM should not generate an answer without retrieved evidence.
+    assert llm_calls == []
+
+    # Citation validation should remain unsuccessful.
+    assert result["citation_validation"]["is_valid"] is False

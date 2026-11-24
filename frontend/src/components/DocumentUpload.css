@@ -1,0 +1,188 @@
+
+/* =========================================
+   Document upload component
+========================================= */
+
+.upload-component {
+  width: 100%;
+}
+
+/* =========================================
+   Drag and drop area
+========================================= */
+
+.upload-dropzone {
+  min-height: 270px;
+  padding: 35px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  background: #ffffff;
+  border: 1.5px dashed #cbd8ec;
+  border-radius: 12px;
+
+  text-align: center;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.upload-dropzone:hover {
+  border-color: #7ca5f7;
+  background: #fbfdff;
+}
+
+.upload-dropzone.dragging {
+  border-color: #2563eb;
+  background: #edf4ff;
+}
+
+.upload-dropzone.upload-disabled {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+/* =========================================
+   Upload icon
+========================================= */
+
+.upload-icon {
+  width: 56px;
+  height: 56px;
+  margin-bottom: 18px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: #2563eb;
+  background: #edf3ff;
+  border-radius: 15px;
+}
+
+/* =========================================
+   Upload text
+========================================= */
+
+.upload-dropzone h3 {
+  margin-bottom: 8px;
+  color: #263650;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.upload-dropzone > p {
+  margin-bottom: 18px;
+  color: #929daf;
+  font-size: 11px;
+}
+
+/* =========================================
+   Browse button
+========================================= */
+
+.upload-browse-button {
+  padding: 10px 20px;
+
+  background: #2563eb;
+  color: #ffffff;
+
+  border: none;
+  border-radius: 7px;
+
+  font-size: 11px;
+  font-weight: 600;
+
+  transition: background 0.2s, transform 0.2s;
+}
+
+.upload-browse-button:hover:not(:disabled) {
+  background: #1d4ed8;
+  transform: translateY(-1px);
+}
+
+.upload-browse-button:disabled {
+  background: #aab6c8;
+  cursor: not-allowed;
+}
+
+/* =========================================
+   Supported file information
+========================================= */
+
+.upload-requirements {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.upload-requirements span {
+  padding: 5px 9px;
+  border-radius: 5px;
+  background: #f2f5fa;
+  color: #7b899e;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.upload-requirements span:last-child {
+  background: transparent;
+  font-weight: 400;
+}
+
+/* =========================================
+   Validation error
+========================================= */
+
+.upload-error {
+  margin-top: 12px;
+  padding: 10px 12px;
+
+  background: #fff1f0;
+  border: 1px solid #ffd8d5;
+  border-radius: 7px;
+
+  color: #d94841;
+  font-size: 11px;
+}
+
+/* =========================================
+   Upload footer
+========================================= */
+
+.upload-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  margin-top: 14px;
+  color: #8995a8;
+  font-size: 10px;
+}
+
+/* =========================================
+   Responsive adjustments
+========================================= */
+
+@media (max-width: 480px) {
+  .upload-dropzone {
+    min-height: 240px;
+    padding: 25px 12px;
+  }
+
+  .upload-dropzone h3 {
+    font-size: 12px;
+  }
+
+  .upload-requirements {
+    gap: 5px;
+  }
+
+  .upload-footer {
+    font-size: 9px;
+  }
+}

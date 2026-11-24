@@ -285,6 +285,36 @@ def get_document_by_hash(
         "created_at": row[4],
     }
 
+def get_document_by_id(
+    document_id: int,
+    session_id: int,
+) -> dict | None:
+    """Find a document by ID, restricted to its owning session."""
+
+    with closing(psycopg.connect(_get_database_url())) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, filename, file_type, status, content_hash, created_at
+                FROM documents
+                WHERE id = %s
+                  AND session_id = %s
+                """,
+                (document_id, session_id),
+            )
+            row = cursor.fetchone()
+
+    if row is None:
+        return None
+
+    return {
+        "id": row[0],
+        "filename": row[1],
+        "file_type": row[2],
+        "status": row[3],
+        "content_hash": row[4],
+        "created_at": row[5],
+    }
 
 def create_uploaded_document(
     filename: str,
@@ -433,6 +463,26 @@ def save_document_chunks(document_id: int, chunks: list[str]) -> None:
                 )
 
 
+def get_document_chunk_ids(document_id: int) -> list[int]:
+    """Return chunk IDs for a document in their original order."""
+
+    with closing(psycopg.connect(_get_database_url())) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id
+                FROM document_chunks
+                WHERE document_id = %s
+                ORDER BY chunk_index
+                """,
+                (document_id,),
+            )
+
+            rows = cursor.fetchall()
+
+    return [row[0] for row in rows]
+
+
 # ---------------------------------------------------------------------------
 # Embedding operations
 # ---------------------------------------------------------------------------
@@ -484,12 +534,14 @@ def save_chunk_embedding(chunk_id: int, embedding: list[float]) -> None:
 
 
 
+
 def search_similar_chunks(
     query_embedding: list[float],
     session_id: int,
+    document_id: int,
     limit: int = 5,
 ) -> list[dict]:
-    """Return the most similar chunks belonging to one session."""
+    """Return the most similar chunks belonging to one session and document."""
 
     # Validate the embedding dimensions expected by our vector column.
     if len(query_embedding) != 384:
@@ -502,8 +554,7 @@ def search_similar_chunks(
     with closing(psycopg.connect(_get_database_url())) as connection:
         with connection:
             with connection.cursor() as cursor:
-                # Filter through the parent document's session ID.
-                # This prevents chunks from other sessions appearing in results.
+                # Restrict retrieval to the selected document and its session.
                 cursor.execute(
                     """
                     SELECT
@@ -518,12 +569,14 @@ def search_similar_chunks(
                     WHERE
                         dc.embedding IS NOT NULL
                         AND d.session_id = %s
+                        AND d.id = %s
                     ORDER BY dc.embedding <=> %s::vector
                     LIMIT %s
                     """,
                     (
                         str(query_embedding),
                         session_id,
+                        document_id,
                         str(query_embedding),
                         limit,
                     ),
@@ -543,6 +596,7 @@ def search_similar_chunks(
         }
         for row in rows
     ]
+
 
 
 # ---------------------------------------------------------------------------
@@ -585,8 +639,10 @@ def get_session_documents(session_id: int) -> list[dict]:
 # Conversation history operations
 # ---------------------------------------------------------------------------
 
+
 def save_conversation_turn(
     session_id: int,
+    document_id: int,
     question: str,
     answer: str,
     sources: list[dict],
@@ -594,16 +650,17 @@ def save_conversation_turn(
     citation_validation: dict,
     result_count: int,
 ) -> dict:
-    """Save a question, generated answer, and citation metadata."""
+    """Save a conversation turn against its owning session and document."""
 
     with closing(psycopg.connect(_get_database_url())) as connection:
         with connection:
             with connection.cursor() as cursor:
-                # Store the complete RAG response against its owning session.
+                # The composite foreign key verifies document ownership.
                 cursor.execute(
                     """
                     INSERT INTO conversation_turns (
                         session_id,
+                        document_id,
                         question,
                         answer,
                         sources,
@@ -611,18 +668,17 @@ def save_conversation_turn(
                         citation_validation,
                         result_count
                     )
-                    VALUES (
-                        %s, %s, %s, %s, %s, %s, %s
-                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id, created_at
                     """,
                     (
                         session_id,
+                        document_id,
                         question,
                         answer,
-                        psycopg.types.json.Jsonb(sources), # type: ignore
-                        psycopg.types.json.Jsonb(cited_source_details), # type: ignore
-                        psycopg.types.json.Jsonb(citation_validation), # type: ignore
+                        psycopg.types.json.Jsonb(sources),  # type: ignore
+                        psycopg.types.json.Jsonb(cited_source_details),  # type: ignore
+                        psycopg.types.json.Jsonb(citation_validation),  # type: ignore
                         result_count,
                     ),
                 )
@@ -630,13 +686,17 @@ def save_conversation_turn(
                 row = cursor.fetchone()
 
     return {
-        "id": row[0], # type: ignore
-        "created_at": row[1], # type: ignore
+        "id": row[0],  # type: ignore
+        "created_at": row[1],  # type: ignore
     }
 
 
-def get_conversation_history(session_id: int) -> list[dict]:
-    """Retrieve conversation turns belonging to one session."""
+
+def get_conversation_history(
+    session_id: int,
+    document_id: int,
+) -> list[dict]:
+    """Retrieve conversation turns for one session and document."""
 
     with closing(psycopg.connect(_get_database_url())) as connection:
         with connection.cursor() as cursor:
@@ -653,9 +713,10 @@ def get_conversation_history(session_id: int) -> list[dict]:
                     created_at
                 FROM conversation_turns
                 WHERE session_id = %s
+                  AND document_id = %s
                 ORDER BY created_at ASC, id ASC
                 """,
-                (session_id,),
+                (session_id, document_id),
             )
 
             rows = cursor.fetchall()

@@ -1,0 +1,233 @@
+
+/* =========================================
+   Document library container
+========================================= */
+
+.document-list {
+  width: 100%;
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid #e9edf3;
+  border-radius: 11px;
+}
+
+/* =========================================
+   Table header and rows
+========================================= */
+
+.document-list-header,
+.document-list-row {
+  display: grid;
+  grid-template-columns: minmax(200px, 2fr) 0.65fr 0.9fr 0.9fr 0.6fr;
+  align-items: center;
+  gap: 15px;
+  padding: 15px 20px;
+}
+
+.document-list-header {
+  background: #fafbfd;
+  border-bottom: 1px solid #edf0f5;
+  color: #9aa5b5;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+}
+
+.document-list-row {
+  min-height: 75px;
+  border-bottom: 1px solid #f0f2f6;
+  color: #8995a8;
+  font-size: 10px;
+}
+
+.document-list-row:last-child {
+  border-bottom: none;
+}
+
+/* =========================================
+   Document name and file icon
+========================================= */
+
+.document-list-name {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.document-list-name strong {
+  overflow: hidden;
+  color: #344158;
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-type-icon {
+  width: 35px;
+  height: 39px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: #fff0ef;
+  color: #e65b55;
+  font-size: 8px;
+  font-weight: 750;
+}
+
+.document-type-icon.docx {
+  background: #edf3ff;
+  color: #2563eb;
+}
+
+.document-type-icon.txt {
+  background: #f1efff;
+  color: #7954c7;
+}
+
+/* =========================================
+   Document metadata
+========================================= */
+
+.document-list-type,
+.document-list-date {
+  color: #8995a8;
+  font-size: 10px;
+}
+
+/* =========================================
+   Processing status
+========================================= */
+
+.document-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 20px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 9px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.document-status.processed {
+  background: #eaf9f2;
+  color: #159765;
+}
+
+.document-status.processing {
+  background: #fff7e8;
+  color: #c18425;
+}
+
+.document-status.failed {
+  background: #fff0ef;
+  color: #d94841;
+}
+
+.document-status.uploaded {
+  background: #edf3ff;
+  color: #2563eb;
+}
+
+/* =========================================
+   Open document button
+========================================= */
+
+.document-list-open {
+  border: none;
+  background: transparent;
+  color: #2563eb;
+  font-size: 10px;
+  font-weight: 650;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.document-list-open:hover:not(:disabled) {
+  color: #1d4ed8;
+}
+
+.document-list-open:disabled {
+  color: #aab4c2;
+  cursor: not-allowed;
+}
+
+/* =========================================
+   Empty document state
+========================================= */
+
+.document-list-empty {
+  min-height: 230px;
+  padding: 35px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.document-list-empty-icon {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: #edf3ff;
+  color: #2563eb;
+  font-size: 22px;
+}
+
+.document-list-empty h3 {
+  margin-bottom: 7px;
+  color: #344158;
+  font-size: 13px;
+}
+
+.document-list-empty p {
+  max-width: 280px;
+  color: #929daf;
+  font-size: 10px;
+  line-height: 1.7;
+}
+
+/* =========================================
+   Responsive layout
+========================================= */
+
+@media (max-width: 900px) {
+  .document-list {
+    overflow-x: auto;
+  }
+
+  .document-list-header,
+  .document-list-row {
+    min-width: 680px;
+  }
+}
+
+
+
+/* Small animated spinner while document processing is in progress. */
+.document-processing-spinner {
+  width: 11px;
+  height: 11px;
+  margin-right: 7px;
+  flex-shrink: 0;
+  border: 2px solid rgba(193, 132, 37, 0.25);
+  border-top-color: #c18425;
+  border-radius: 50%;
+  animation: document-spin 0.75s linear infinite;
+}
+
+@keyframes document-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
